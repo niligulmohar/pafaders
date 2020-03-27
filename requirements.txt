@@ -1,0 +1,2 @@
+pulsectl==20.2.4
+python-rtmidi==1.4.0
