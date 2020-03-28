@@ -8,7 +8,7 @@ import rtmidi
 
 
 # This port sends CC:s for every control in template 38 (Automap).
-PORT_NAME = "ReMOTE ZeRO SL:ReMOTE ZeRO SL MIDI 3 28:2"
+PORT_NAME = "ReMOTE ZeRO SL MIDI 3"
 
 CHAN_16_CC = 0xBF
 
@@ -19,8 +19,15 @@ def main():
     logging.basicConfig(level=logging.INFO)
 
     midiin = rtmidi.MidiIn()
-    ports = {name: n for n, name in enumerate(midiin.get_ports())}
-    with midiin.open_port(ports[PORT_NAME]) as port:
+    ports = midiin.get_ports()
+    port_index = 0
+    for index, name in enumerate(ports):
+        if PORT_NAME in name:
+            port_index = index
+            break
+
+    LOG.info("Opening port %d %r", port_index, ports[port_index])
+    with midiin.open_port(port_index) as port:
         with pulsectl.Pulse("pafaders") as pulse:
 
             def set_volume(app_index, volume):
