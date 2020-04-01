@@ -5,5 +5,5 @@ setup(
     version="0.0.1",
     packages=["pafaders"],
     requirements=["pulsectl", "rtmidi", "mpris2"],
-    entry_points={"console_scripts": ["pafaders = pafaders:main"],},
+    entry_points={"console_scripts": ["pafaders = pafaders:main"]},
 )

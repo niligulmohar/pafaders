@@ -23,6 +23,7 @@ class MidiPortListener:
         self.port = port
         self.port_name = port_name
         self.controller = controller
+        self.log = LOG.getChild(self.__class__.__name__)
 
         self.port.set_callback(self.callback)
 
@@ -38,21 +39,29 @@ class MidiPortListener:
     def callback(self, event, data):
         octets, dt = event
         if DUMP_SYSEX_MESSAGES_TO_FILE and octets[0] == SYSTEM_EXCLUSIVE:
-            LOG.debug
             now = datetime.now().strftime("%H:%M:%S.%f")
             filename = f"sysex-{now}"
             with open(filename, "wb") as bin_file:
-                LOG.info(
+                self.log.info(
                     "Port %r, Writing SysEx message to file %s",
                     self.port_name,
                     filename,
                 )
                 bin_file.write(bytes(octets[1:-1]))
         else:
-            LOG.debug("Port %r, Event %r, data %r", self.port_name, octets, data)
+            self.log.log(
+                logging.DEBUG - 1,
+                "Port %r, Event %r, data %r",
+                self.port_name,
+                octets,
+                data,
+            )
 
     def set_volume(self, *, app, volume):
         self.controller.set_volume(app=app, volume=volume)
+
+    def shutdown(self):
+        self.port.close_port()
 
 
 class RemoteZeroSLListener(MidiPortListener):
@@ -73,6 +82,9 @@ class RemoteZeroSLListener(MidiPortListener):
 
     SYSEX_PREFIX = [SYSTEM_EXCLUSIVE] + MANUFACTURER_ID + [0x03, 0x03]
     TEXT_SYSEX_PREFIX = SYSEX_PREFIX + [0x11, 0x04, PID]
+
+    # Received when template 38 is selected. Send to select template
+    # 38.
     AUTOMAP_ENGAGE_SYSEX = SYSEX_PREFIX + [
         0x10,
         0x05,
@@ -87,18 +99,25 @@ class RemoteZeroSLListener(MidiPortListener):
     # to this port.
     PORT_NAME = "ReMOTE ZeRO SL MIDI 3"
 
+    FADERS = list(range(16, 24))
+
     def __init__(self, *, port, port_name, controller):
         super().__init__(port=port, port_name=port_name, controller=controller)
+
+        self.controller.subscribe("set_application_list", self.set_application_list)
+
         midi_out = rtmidi.MidiOut()
         ports = midi_out.get_ports()
         for index, name in enumerate(ports):
             if name == self.port_name:
                 self.out_port = midi_out.open_port(index)
-                LOG.debug("Open output port %r for %r", name, self.__class__.__name__)
+                self.log.debug("Open output port %r", name)
                 break
         else:
             raise SystemError("No matching output port found")
+        self.log.info("Found ReMOTE ZeRO SL")
         self.out_port.send_message(self.AUTOMAP_ENGAGE_SYSEX)
+        self.app_display = ""
         self.update_displays()
 
     @classmethod
@@ -111,8 +130,8 @@ class RemoteZeroSLListener(MidiPortListener):
         if octets[0] == CHAN_16_CC:
             control, value = octets[1:]
             # CC 16..23 correspond to the faders
-            if 16 <= control < 24:
-                app = control - 16
+            if control in self.FADERS:
+                app = control - self.FADERS[0]
                 volume = value / 127.0
                 self.set_volume(app=app, volume=volume)
         elif octets == self.AUTOMAP_ENGAGE_SYSEX:
@@ -147,7 +166,22 @@ class RemoteZeroSLListener(MidiPortListener):
         self.clear_displays()
         self.show_text(display=0, line=0, column=0, text="pafaders")
         text = " ".join(f"    {n}   " for n in range(8))
+        self.show_text(display=1, line=0, column=0, text=self.app_display)
         self.show_text(display=1, line=1, column=0, text=text)
+
+    def set_application_list(self, apps):
+        names = []
+        for app in apps:
+            if not app.active:
+                names.append("--------")
+            else:
+                names.append(app.name()[0:8])
+        self.app_display = " ".join(names)
+        self.update_displays()
+
+    def shutdown(self):
+        self.clear_displays()
+        super().shutdown()
 
 
 class MidiListener:
@@ -162,6 +196,8 @@ class MidiListener:
         return self
 
     def __exit__(self, *args):
+        for listener in self.port_listeners.values():
+            listener.shutdown()
         return False
 
     def check_ports(self):
