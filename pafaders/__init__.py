@@ -7,7 +7,7 @@ import click
 
 from pafaders.controller import Controller
 from pafaders.midi import MidiListener
-from pafaders.pulseaudio import Applications
+from pafaders.applications import Applications
 
 
 LOG = logging.getLogger(__name__)

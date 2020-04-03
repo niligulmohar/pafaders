@@ -60,6 +60,9 @@ class MidiPortListener:
     def set_volume(self, *, app, volume):
         self.controller.set_volume(app=app, volume=volume)
 
+    def play_or_pause(self):
+        self.controller.play_or_pause()
+
     def shutdown(self):
         self.port.close_port()
 
@@ -100,6 +103,7 @@ class RemoteZeroSLListener(MidiPortListener):
     PORT_NAME = "ReMOTE ZeRO SL MIDI 3"
 
     FADERS = list(range(16, 24))
+    PLAY = 75
 
     def __init__(self, *, port, port_name, controller):
         super().__init__(port=port, port_name=port_name, controller=controller)
@@ -134,6 +138,8 @@ class RemoteZeroSLListener(MidiPortListener):
                 app = control - self.FADERS[0]
                 volume = value / 127.0
                 self.set_volume(app=app, volume=volume)
+            elif control == self.PLAY and value == 1:
+                self.play_or_pause()
         elif octets == self.AUTOMAP_ENGAGE_SYSEX:
             # We need to wait for the transient template change
             # message to disappear from the display.

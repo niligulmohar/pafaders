@@ -15,3 +15,7 @@ class Controller:
     def set_volume(self, *, app, volume):
         for fn in self.subscribers["set_volume"]:
             fn(app=app, volume=volume)
+
+    def play_or_pause(self):
+        for fn in self.subscribers["play_or_pause"]:
+            fn()
