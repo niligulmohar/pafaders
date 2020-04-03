@@ -28,7 +28,7 @@ class MidiPortListener:
         self.port.set_callback(self.callback)
 
     @classmethod
-    def get(cls, *, port_name):
+    def get_class(cls, *, port_name):
         for subclass in cls.__subclasses__():
             if subclass.handles(port_name=port_name):
                 return subclass
@@ -172,7 +172,7 @@ class RemoteZeroSLListener(MidiPortListener):
     def set_application_list(self, apps):
         names = []
         for app in apps:
-            if not app.active:
+            if not app.active():
                 names.append("--------")
             else:
                 names.append(f"{app.name()[0:8]:<8}")
@@ -208,7 +208,7 @@ class MidiListener:
             for index, name in enumerate(ports):
                 if name not in self.port_listeners:
                     try:
-                        listener_class = MidiPortListener.get(port_name=name)
+                        listener_class = MidiPortListener.get_class(port_name=name)
                         if listener_class is not None:
                             LOG.debug(
                                 "Open port %r %r with %r",

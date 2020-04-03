@@ -10,28 +10,94 @@ LOG = logging.getLogger(__name__)
 
 
 class Application:
-    def __init__(self, pa_sink_input):
-        self.pa_sink_input = pa_sink_input
-        self.index = pa_sink_input.index
-        self.active = True
+    def __init__(self, *, pa_sink_input):
+        self.pa_sink_inputs = []
+        self.active_sink_inputs = {}
+        self.add_sink_input(pa_sink_input)
+
+    @classmethod
+    def get(cls, *, pa_sink_input):
+        for subclass in cls.__subclasses__():
+            if subclass.handles(pa_sink_input=pa_sink_input):
+                app_class = subclass
+                break
+        else:
+            app_class = cls
+
+        return app_class(pa_sink_input=pa_sink_input)
+
+    @classmethod
+    def handles(cls, *, pa_sink_input):
+        return False
 
     def name(self):
-        app_name = self.pa_sink_input.proplist["application.name"]
-        media_name = self.pa_sink_input.proplist["media.name"]
+        app_names = {si.proplist["application.name"] for si in self.pa_sink_inputs}
+        media_names = {si.proplist["media.name"] for si in self.pa_sink_inputs}
 
-        # Same convention as pavucontrol
-        return f"{app_name} : {media_name}"
+        if len(app_names) == len(media_names) == 1:
+            # Same convention as pavucontrol
+            return f"{app_names.pop()} : {media_names.pop()}"
+        else:
+            return app_names.pop()
+
+    def active(self):
+        return bool(self.active_sink_inputs)
 
     def identity(self):
-        # If sink inputs are named the same, they are allowed to take
-        # over faders vacated by removed sink inputs.
-        return self.name()
+        return (self.__class__.__name__, self.name())
 
-    def may_replace(self, other):
+    def may_replace_app(self, other):
         return self.identity() == other.identity()
 
+    def wants_sink_input(self, pa_sink_input):
+        # This implementation will group sink inputs for classes that
+        # state that they handle them. For this fallback class, every
+        # sink will get its own application instance.
+        return self.handles(pa_sink_input=pa_sink_input)
+
+    def add_sink_input(self, pa_sink_input):
+        self.pa_sink_inputs.append(pa_sink_input)
+        self.active_sink_inputs[pa_sink_input.index] = pa_sink_input
+
+    def remove_sink_input_index(self, index):
+        try:
+            del self.active_sink_inputs[index]
+        except KeyError:
+            LOG.exception("remove_sink_input_index")
+
+    def set_volume(self, *, volume, pulse):
+        for si in self.active_sink_inputs.values():
+            pulse.volume_set_all_chans(si, volume)
+
     def __repr__(self):
-        return f"<Application #{self.index} {self.name()}>"
+        indices = ", ".join(f"#{si.index}" for si in self.pa_sink_inputs)
+        return f"<{self.__class__.__name__} {indices} {self.name()}>"
+
+
+class Firefox(Application):
+    # Firefox creates multiple sink inputs with name "AudioStream",
+    # and it is difficult to distinguish them.
+    @classmethod
+    def handles(cls, *, pa_sink_input):
+        return pa_sink_input.proplist["application.name"] == "Firefox"
+
+
+class Rhythmbox(Application):
+    # Rhythmbox creates a new sink input with a new media name each
+    # time it plays a song.
+    @classmethod
+    def handles(cls, *, pa_sink_input):
+        return pa_sink_input.proplist["application.name"] == "Rhythmbox"
+
+
+class Spotify(Application):
+    # The application.name of Spotify isn't capitalised.
+    @classmethod
+    def handles(cls, *, pa_sink_input):
+        return pa_sink_input.proplist["application.name"] == "spotify"
+
+    def name(self):
+        return "Spotify"
 
 
 class Applications:
@@ -52,32 +118,42 @@ class Applications:
     def __exit__(self, *args):
         return self.pulse.__exit__(*args)
 
-    def add_sink_input_as_app(self, sink_input):
-        new_app = Application(sink_input)
+    def add_sink_input(self, sink_input):
+        for app in self.app_list:
+            if app.wants_sink_input(sink_input):
+                LOG.debug("Adding sink input to %r", app)
+                app.add_sink_input(sink_input)
+                self.app_by_index[sink_input.index] = app
+                return False
+
+        new_app = Application.get(pa_sink_input=sink_input)
         LOG.debug("Found app %r", new_app)
         self.app_by_index[sink_input.index] = new_app
 
         # Replace similar app
         for n, app in enumerate(self.app_list):
-            if not app.active and new_app.may_replace(app):
+            if not app.active() and new_app.may_replace_app(app):
                 self.app_list[n] = new_app
-                return
+                return False
 
         # Take position of removed app if we are full
         if len(self.app_list) > 8:
             for n, app in enumerate(self.app_list):
                 if not app.active:
                     self.app_list[n] = new_app
-                    return
+                    return True
 
         self.app_list.append(new_app)
+        return True
 
-    def remove_app(self, app):
-        if app.active:
+    def remove_sink_input_index(self, index):
+        app = self.app_by_index.pop(index)
+        app.remove_sink_input_index(index)
+        if app.active():
+            return False
+        else:
             LOG.debug("Lost app %r", app)
-            app.active = False
             return True
-        return False
 
     def update_sink_inputs(self):
         with self.lock:
@@ -86,13 +162,15 @@ class Applications:
 
             for si in self.pulse.sink_input_list():
                 sink_input_indices.add(si.index)
-                if si.index not in self.app_by_index:
-                    self.add_sink_input_as_app(si)
-                    changed = True
 
             removed_indices = set(self.app_by_index).difference(sink_input_indices)
             for index in removed_indices:
-                if self.remove_app(self.app_by_index[index]):
+                if self.remove_sink_input_index(index):
+                    changed = True
+
+            for si in self.pulse.sink_input_list():
+                if si.index not in self.app_by_index:
+                    self.add_sink_input(si)
                     changed = True
 
             if changed:
@@ -107,9 +185,9 @@ class Applications:
     def set_volume(self, *, app, volume):
         with self.lock:
             try:
-                app = self.app_list[app]
+                app_instance = self.app_list[app]
             except IndexError:
                 return
 
-            if app.active:
-                self.pulse.volume_set_all_chans(app.pa_sink_input, volume)
+            if app_instance.active:
+                app_instance.set_volume(volume=volume, pulse=self.pulse)
