@@ -175,7 +175,7 @@ class RemoteZeroSLListener(MidiPortListener):
             if not app.active:
                 names.append("--------")
             else:
-                names.append(app.name()[0:8])
+                names.append(f"{app.name()[0:8]:<8}")
         self.app_display = " ".join(names)
         self.update_displays()
 
