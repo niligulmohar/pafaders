@@ -60,8 +60,8 @@ class MidiPortListener:
     def set_volume(self, *, app, volume):
         self.controller.set_volume(app=app, volume=volume)
 
-    def play_or_pause(self):
-        self.controller.play_or_pause()
+    def play_or_pause(self, *, app=None):
+        self.controller.play_or_pause(app=app)
 
     def shutdown(self):
         self.port.close_port()
@@ -103,6 +103,8 @@ class RemoteZeroSLListener(MidiPortListener):
     PORT_NAME = "ReMOTE ZeRO SL MIDI 3"
 
     FADERS = list(range(16, 24))
+    # Second row of buttons below the faders
+    FADER_BUTTONS_2 = list(range(48, 56))
     PLAY = 75
 
     def __init__(self, *, port, port_name, controller):
@@ -138,6 +140,9 @@ class RemoteZeroSLListener(MidiPortListener):
                 app = control - self.FADERS[0]
                 volume = value / 127.0
                 self.set_volume(app=app, volume=volume)
+            if control in self.FADER_BUTTONS_2 and value == 1:
+                app = control - self.FADER_BUTTONS_2[0]
+                self.play_or_pause(app=app)
             elif control == self.PLAY and value == 1:
                 self.play_or_pause()
         elif octets == self.AUTOMAP_ENGAGE_SYSEX:

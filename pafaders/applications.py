@@ -149,6 +149,14 @@ class Application:
         if self.mpris_player is not None:
             self.mpris_player.PlayPause()
 
+    def play(self):
+        if self.mpris_player is not None:
+            self.mpris_player.Play()
+
+    def pause(self):
+        if self.mpris_player is not None:
+            self.mpris_player.Pause()
+
     def __repr__(self):
         indices = ", ".join(f"#{index}" for index in self.active_sink_inputs)
         return f"<{self.__class__.__name__} {self.name()} ({indices})>"
@@ -350,6 +358,17 @@ class Applications:
             if app_instance.active:
                 app_instance.set_volume(volume=volume, pulse=self.pulse)
 
-    def play_or_pause(self):
-        if self.playing_app is not None:
+    def play_or_pause(self, *, app=None):
+        if app is None:
             self.playing_app.play_or_pause()
+            return
+
+        playing = self.app_list[app].playback_status == PlaybackStatus.PLAYING
+        if playing:
+            self.app_list[app].pause()
+        else:
+            for index, app_object in enumerate(self.app_list):
+                if index == app:
+                    app_object.play()
+                else:
+                    app_object.pause()

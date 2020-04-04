@@ -16,6 +16,6 @@ class Controller:
         for fn in self.subscribers["set_volume"]:
             fn(app=app, volume=volume)
 
-    def play_or_pause(self):
+    def play_or_pause(self, *, app=None):
         for fn in self.subscribers["play_or_pause"]:
-            fn()
+            fn(app=app)
