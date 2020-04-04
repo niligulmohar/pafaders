@@ -171,18 +171,25 @@ class RemoteZeroSLListener(MidiPortListener):
     def update_displays(self):
         self.clear_displays()
         self.show_text(display=0, line=0, column=0, text="pafaders")
-        text = " ".join(f"    {n}   " for n in range(8))
-        self.show_text(display=1, line=0, column=0, text=self.app_display)
-        self.show_text(display=1, line=1, column=0, text=text)
+        for line, text in enumerate(self.app_display):
+            self.show_text(display=1, line=line, column=0, text=text)
 
     def set_application_list(self, apps):
         names = []
+        states = []
         for app in apps:
             if not app.active():
                 names.append("--------")
             else:
                 names.append(f"{app.name()[0:8]:<8}")
-        self.app_display = " ".join(names)
+
+            status = app.playback_status
+            if status is None:
+                states.append("        ")
+            else:
+                states.append(f"{status.value:^8}")
+
+        self.app_display = [" ".join(names), " ".join(states)]
         self.update_displays()
 
     def shutdown(self):

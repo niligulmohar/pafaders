@@ -4,6 +4,7 @@ import enum
 import logging
 import threading
 
+import dbus
 import mpris2
 import pulsectl
 
@@ -22,6 +23,7 @@ class Application:
         self.pa_sink_inputs = []
         self.mpris_app = None
         self.mpris_player = None
+        self.cached_mpris_identity = None
         self.active_sink_inputs = {}
 
         if pa_sink_input is not None:
@@ -62,9 +64,16 @@ class Application:
         if mpris_player_uri is not None:
             return cls.handles_mpris_player_uri(mpris_player_uri)
 
+    def mpris_identity(self):
+        try:
+            self.cached_mpris_identity = str(self.mpris_app.Identity)
+        except dbus.exceptions.DBusException:
+            pass
+        return self.cached_mpris_identity
+
     def name(self):
         if self.mpris_app is not None:
-            return str(self.mpris_app.Identity)
+            return self.mpris_identity()
 
         app_names = {si.proplist["application.name"] for si in self.pa_sink_inputs}
         media_names = {si.proplist["media.name"] for si in self.pa_sink_inputs}
@@ -129,16 +138,19 @@ class Application:
     @property
     def playback_status(self):
         if self.mpris_player is None:
-            return False
+            return None
         else:
-            return PlaybackStatus(self.mpris_player.PlaybackStatus)
+            try:
+                return PlaybackStatus(self.mpris_player.PlaybackStatus)
+            except dbus.exceptions.DBusException:
+                return None
 
     def play_or_pause(self):
         if self.mpris_player is not None:
             self.mpris_player.PlayPause()
 
     def __repr__(self):
-        indices = ", ".join(f"#{si.index}" for si in self.pa_sink_inputs)
+        indices = ", ".join(f"#{index}" for index in self.active_sink_inputs)
         return f"<{self.__class__.__name__} {self.name()} ({indices})>"
 
 
@@ -184,6 +196,7 @@ class Applications:
         self.app_by_sink_input_index = {}
         self.app_by_player_uri = {}
         self.app_list = []
+        self.playback_status_list = []
         self.playing_app = None
 
         # We may be called via callback functions in other threads.
@@ -279,7 +292,8 @@ class Applications:
         removed_uris = set(self.app_by_player_uri).difference(uris)
         for uri in removed_uris:
             LOG.debug("Removed uri %r", uri)
-            del self.app_by_player_uri[uri]
+            app = self.app_by_player_uri.pop(uri)
+            app.remove_player()
             changed = True
 
         for uri in uris:
@@ -308,6 +322,10 @@ class Applications:
         ):
             self.playing_app = first_playing_app
             LOG.debug("Changed current player to: %r", self.playing_app)
+
+        playback_status_list = [a.playback_status for a in self.app_list]
+        if playback_status_list != self.playback_status_list:
+            changed = True
 
         return changed
 
