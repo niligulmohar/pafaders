@@ -123,7 +123,7 @@ class RemoteZeroSLListener(MidiPortListener):
             raise SystemError("No matching output port found")
         self.log.info("Found ReMOTE ZeRO SL")
         self.out_port.send_message(self.AUTOMAP_ENGAGE_SYSEX)
-        self.app_display = ""
+        self.clear_display_buffers()
         self.update_displays()
 
     @classmethod
@@ -151,6 +151,9 @@ class RemoteZeroSLListener(MidiPortListener):
             time.sleep(0.8)
             self.update_displays()
 
+    def clear_display_buffers(self):
+        self.display_buffers = [[0x20] * 72 for n in range(4)]
+
     def clear_displays(self):
         for display in (0x04, 0x05):
             msg = (
@@ -168,18 +171,18 @@ class RemoteZeroSLListener(MidiPortListener):
             + self.MANUFACTURER_ID
             + self.TEXT_SYSEX_PREFIX
             + [0x00, 0x02, 0x01, column, line_id, 0x04]
-            + list(text.encode("ascii"))
+            + text
             + [END_OF_EXCLUSIVE]
         )
         self.out_port.send_message(msg)
 
     def update_displays(self):
-        self.clear_displays()
-        self.show_text(display=0, line=0, column=0, text="pafaders")
-        for line, text in enumerate(self.app_display):
-            self.show_text(display=1, line=line, column=0, text=text)
+        for n, line in enumerate(self.display_buffers):
+            self.show_text(display=(n >> 1), line=(n & 1), column=0, text=line)
 
     def set_application_list(self, apps):
+        self.clear_display_buffers()
+
         names = []
         states = []
         for app in apps:
@@ -194,7 +197,10 @@ class RemoteZeroSLListener(MidiPortListener):
             else:
                 states.append(f"{status.value:^8}")
 
-        self.app_display = [" ".join(names), " ".join(states)]
+        app_names = " ".join(names).encode("ascii")
+        app_states = " ".join(states).encode("ascii")
+        self.display_buffers[2][0:len(app_names)] = app_names
+        self.display_buffers[3][0:len(app_states)] = app_states
         self.update_displays()
 
     def shutdown(self):
