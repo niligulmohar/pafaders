@@ -321,7 +321,9 @@ class Applications:
                 ):
                     first_playing_app = app
 
-        if self.playing_app is None:
+        if first_playing_app is None:
+            pass
+        elif self.playing_app is None:
             self.playing_app = first_playing_app
             LOG.debug("Current player: %r", self.playing_app)
         elif (
