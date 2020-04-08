@@ -199,8 +199,8 @@ class RemoteZeroSLListener(MidiPortListener):
 
         app_names = " ".join(names).encode("ascii")
         app_states = " ".join(states).encode("ascii")
-        self.display_buffers[2][0:len(app_names)] = app_names
-        self.display_buffers[3][0:len(app_states)] = app_states
+        self.display_buffers[2][: len(app_names)] = app_names
+        self.display_buffers[3][: len(app_states)] = app_states
         self.update_displays()
 
     def shutdown(self):
