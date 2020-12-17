@@ -192,6 +192,15 @@ class Firefox(Application):
     def handles_pa_sink_input(cls, pa_sink_input):
         return pa_sink_input.proplist["application.name"] == "Firefox"
 
+    @classmethod
+    def handles_mpris_player_uri(cls, mpris_player_uri):
+        return mpris_player_uri.startswith("org.mpris.MediaPlayer2.firefox.instance")
+
+    def set_volume(self, *, volume, pulse):
+        # The media player object of Firefox does not support volume
+        # changes.
+        self.set_pa_volume(volume=volume, pulse=pulse)
+
 
 class Rhythmbox(Application):
     @classmethod
