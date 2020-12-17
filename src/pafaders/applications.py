@@ -236,7 +236,7 @@ class Applications:
     def add_app(self, new_app):
         # Replace similar app
         for n, app in enumerate(self.app_list):
-            if not app.active() and app.may_replace_app(app):
+            if not app.active() and new_app.may_replace_app(app):
                 self.app_list[n] = new_app
                 return False
 
