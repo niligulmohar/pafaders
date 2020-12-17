@@ -81,8 +81,9 @@ class Application:
         if len(app_names) == len(media_names) == 1:
             # Same convention as pavucontrol
             return f"{app_names.pop()} : {media_names.pop()}"
-        else:
+        elif app_names:
             return app_names.pop()
+        return "<Application without sink inputs>"
 
     def active(self):
         return bool(self.active_sink_inputs) or self.mpris_player is not None
