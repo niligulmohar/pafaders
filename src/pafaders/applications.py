@@ -23,6 +23,8 @@ class Application:
     # external volume updates to previous sinks.
     SHOULD_FIX_VOLUME = False
 
+    name_override = None
+
     def __init__(self, *, pa_sink_input=None, mpris_player_uri=None):
         self.pa_sink_inputs = []
         self.mpris_app = None
@@ -77,6 +79,9 @@ class Application:
         return self.cached_mpris_identity
 
     def name(self):
+        if self.name_override is not None:
+            return self.name_override
+
         if self.mpris_app is not None:
             return self.mpris_identity()
 
@@ -177,6 +182,8 @@ class Firefox(Application):
     # Firefox does not consider changed volumes when creating new sink
     # inputs.
     SHOULD_FIX_VOLUME = True
+
+    name_override = "Firefox"
 
     # Firefox creates multiple sink inputs with the name
     # "AudioStream", and it is difficult to distinguish them, so we
