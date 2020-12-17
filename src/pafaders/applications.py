@@ -227,6 +227,14 @@ class Spotify(Application):
         self.set_pa_volume(volume=volume, pulse=pulse)
 
 
+class Discord(Application):
+    name_override = "Discord"
+
+    @classmethod
+    def handles_pa_sink_input(cls, pa_sink_input):
+        return pa_sink_input.proplist["application.name"] == "WEBRTC VoiceEngine"
+
+
 class Applications:
     def __init__(self, *, controller):
         self.controller = controller
