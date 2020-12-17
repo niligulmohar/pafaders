@@ -19,12 +19,17 @@ class PlaybackStatus(enum.Enum):
 
 
 class Application:
+    # Set to True if the application creates sinks without considering
+    # external volume updates to previous sinks.
+    SHOULD_FIX_VOLUME = False
+
     def __init__(self, *, pa_sink_input=None, mpris_player_uri=None):
         self.pa_sink_inputs = []
         self.mpris_app = None
         self.mpris_player = None
         self.cached_mpris_identity = None
         self.active_sink_inputs = {}
+        self.volume = None
 
         if pa_sink_input is not None:
             self.add_sink_input(pa_sink_input)
@@ -131,10 +136,15 @@ class Application:
         self.mpris_player.Volume = volume
 
     def set_volume(self, *, volume, pulse):
+        self.volume = volume
         if self.mpris_player is not None:
             self.set_mpris_volume(volume)
         else:
             self.set_pa_volume(volume=volume, pulse=pulse)
+
+    def fix_volume(self, *, pulse):
+        if self.SHOULD_FIX_VOLUME and self.volume is not None:
+            self.set_volume(volume=self.volume, pulse=pulse)
 
     @property
     def playback_status(self):
@@ -164,8 +174,13 @@ class Application:
 
 
 class Firefox(Application):
-    # Firefox creates multiple sink inputs with name "AudioStream",
-    # and it is difficult to distinguish them.
+    # Firefox does not consider changed volumes when creating new sink
+    # inputs.
+    SHOULD_FIX_VOLUME = True
+
+    # Firefox creates multiple sink inputs with the name
+    # "AudioStream", and it is difficult to distinguish them, so we
+    # handle all as one application.
     @classmethod
     def handles_pa_sink_input(cls, pa_sink_input):
         return pa_sink_input.proplist["application.name"] == "Firefox"
@@ -240,6 +255,7 @@ class Applications:
             if app.wants_sink_input(sink_input):
                 LOG.debug("Adding sink input to %r", app)
                 app.add_sink_input(sink_input)
+                app.fix_volume(pulse=self.pulse)
                 self.app_by_sink_input_index[sink_input.index] = app
                 return False
 
